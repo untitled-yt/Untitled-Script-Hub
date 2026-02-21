@@ -346,9 +346,6 @@
       letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-faint);
     }
 
-    /* ============================================================
-       TOOLBAR
-    ============================================================ */
     #toolbar {
       max-width: 1400px; margin: 0 auto;
       padding: 0 24px 20px;
@@ -362,11 +359,24 @@
       color: var(--text-faint); flex-shrink: 0;
     }
 
-    .filter-scroll {
-      display: flex; gap: 5px; overflow-x: auto; flex: 1;
-      scrollbar-width: none; -ms-overflow-style: none;
+    .filter-scroll-wrap {
+      flex: 1; position: relative; overflow: hidden; min-width: 0;
     }
-    .filter-scroll::-webkit-scrollbar { display: none; }
+
+    .filter-scroll-wrap::after {
+      content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 40px;
+      background: linear-gradient(to right, transparent, var(--bg));
+      pointer-events: none; z-index: 1;
+    }
+
+    .filter-scroll {
+      display: flex; gap: 5px; overflow-x: auto; padding-right: 40px;
+      scrollbar-width: thin; scrollbar-color: var(--border-hi) transparent;
+      scroll-behavior: smooth; -webkit-overflow-scrolling: touch;
+    }
+    .filter-scroll::-webkit-scrollbar { height: 2px; }
+    .filter-scroll::-webkit-scrollbar-track { background: transparent; }
+    .filter-scroll::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 99px; }
 
     .filter-chip {
       display: inline-flex; align-items: center; gap: 5px;
@@ -612,7 +622,7 @@
     .empty-sub { font-size: 13px; color: var(--text-faint); max-width: 300px; line-height: 1.6; }
 
     #loading-state {
-      display: flex; align-items: center; justify-content: center;
+      display: flex; align-items: center; justify-content: center; flex-direction: column;
       padding: 80px 24px; gap: 10px; font-family: var(--mono);
       font-size: 11px; color: var(--text-faint); letter-spacing: 0.1em;
     }
@@ -811,15 +821,36 @@
       background: none; border: 1px solid var(--border); color: var(--text-muted);
       font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
       text-transform: uppercase; padding: 9px 16px; border-radius: var(--radius); cursor: pointer;
-      transition: all var(--transition);
+      transition: all var(--transition); text-decoration: none; white-space: nowrap; flex-shrink: 0;
     }
 
     .add-btn .material-icons-round { font-size: 14px; }
     .add-btn:hover { border-color: var(--border-hi); color: var(--text); background: var(--accent-dim); }
 
-    .schema-reveal { display: none; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); margin-top: 12px; overflow: hidden; }
-    .schema-reveal.open { display: block; animation: fadeIn 0.22s ease both; }
-    .schema-reveal pre { padding: 18px; overflow-x: auto; }
+    /* Submit steps */
+    .submit-steps {
+      display: flex; flex-direction: column; gap: 0;
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); margin-top: 12px; overflow: hidden;
+    }
+
+    .submit-step {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      transition: background var(--transition);
+    }
+    .submit-step:last-child { border-bottom: none; }
+    .submit-step:hover { background: var(--bg2); }
+
+    .submit-step-num {
+      width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-hi);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+      flex-shrink: 0; margin-top: 1px;
+    }
+
+    .submit-step-text { display: flex; flex-direction: column; gap: 3px; }
+    .submit-step-text strong { font-size: 12.5px; color: var(--text); font-weight: 600; }
+    .submit-step-text span { font-size: 11.5px; color: var(--text-muted); font-weight: 300; line-height: 1.5; }
 
     /* ============================================================
        FOOTER
@@ -1084,7 +1115,9 @@
   <!-- TOOLBAR -->
   <div id="toolbar">
     <span class="toolbar-label">Filter</span>
-    <div class="filter-scroll" id="filter-chips"></div>
+    <div class="filter-scroll-wrap">
+      <div class="filter-scroll" id="filter-chips"></div>
+    </div>
     <div class="toolbar-right">
       <select class="sort-select" id="sort-select">
         <option value="date-desc">Newest</option>
@@ -1100,8 +1133,10 @@
   <!-- MAIN GRID -->
   <main id="main-grid" class="view-grid">
     <div id="loading-state">
-      <span>Loading scripts</span>
-      <div class="loading-dots"><span></span><span></span><span></span></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span>Loading scripts</span>
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+      </div>
     </div>
     <div id="empty-state">
       <span class="material-icons-round empty-icon">search_off</span>
@@ -1111,35 +1146,40 @@
     <div class="scripts-grid" id="scripts-grid"></div>
   </main>
 
-  <!-- HOW TO ADD -->
+  <!-- SUBMIT A SCRIPT -->
   <section id="how-to-add">
     <div class="add-banner">
-      <div class="add-icon"><span class="material-icons-round">add_circle_outline</span></div>
+      <div class="add-icon"><span class="material-icons-round">send</span></div>
       <div class="add-text">
-        <h3>Add a script</h3>
-        <p>Edit <code>scripts.json</code> to add new entries. Set <code>featured: true</code> to pin a script at the top. Use <code>type</code>: Free / Keyless / Key.</p>
+        <h3>Submit a script</h3>
+        <p>Want your script featured? DM <strong style="color:var(--text)">@untitled_on_yt</strong> on Discord with your script (obfuscated or not), the game it's for, and a thumbnail <span style="color:var(--text-faint)">(optional)</span>. I'll review and add it to the hub!</p>
       </div>
-      <button class="add-btn" id="show-schema-btn">
-        <span class="material-icons-round">code</span> Schema
-      </button>
+      <a class="add-btn" href="https://discord.com/users/untitled_on_yt" target="_blank" rel="noopener">
+        <span class="material-icons-round">open_in_new</span> DM me
+      </a>
     </div>
-    <div class="schema-reveal" id="schema-reveal">
-      <pre><code>{
-  <span class="tok-str">"id"</span>:          <span class="tok-num">1</span>,
-  <span class="tok-str">"title"</span>:       <span class="tok-str">"Script Name"</span>,
-  <span class="tok-str">"description"</span>: <span class="tok-str">"What it does"</span>,
-  <span class="tok-str">"category"</span>:   <span class="tok-str">"Blox Fruits"</span>,   <span class="tok-cmt">-- game name or "Universal"</span>
-  <span class="tok-str">"type"</span>:        <span class="tok-str">"Free"</span>,          <span class="tok-cmt">-- "Free" | "Keyless" | "Key"</span>
-  <span class="tok-str">"tags"</span>:        [<span class="tok-str">"autofarm"</span>, <span class="tok-str">"gui"</span>],
-  <span class="tok-str">"author"</span>:      <span class="tok-str">"YourName"</span>,
-  <span class="tok-str">"version"</span>:     <span class="tok-str">"1.0.0"</span>,
-  <span class="tok-str">"date"</span>:        <span class="tok-str">"2025-01-01"</span>,
-  <span class="tok-str">"thumbnail"</span>:   <span class="tok-str">""</span>,             <span class="tok-cmt">-- URL or path (optional)</span>
-  <span class="tok-str">"copies"</span>:      <span class="tok-num">0</span>,              <span class="tok-cmt">-- starting count</span>
-  <span class="tok-str">"stars"</span>:       <span class="tok-num">0</span>,
-  <span class="tok-str">"featured"</span>:    <span class="tok-kw">false</span>,
-  <span class="tok-str">"code"</span>:        <span class="tok-str">"-- Lua here"</span>
-}</code></pre>
+    <div class="submit-steps" id="schema-reveal">
+      <div class="submit-step">
+        <div class="submit-step-num">1</div>
+        <div class="submit-step-text">
+          <strong>Write or grab your script</strong>
+          <span>Obfuscated or plain Lua — both are fine.</span>
+        </div>
+      </div>
+      <div class="submit-step">
+        <div class="submit-step-num">2</div>
+        <div class="submit-step-text">
+          <strong>DM @untitled_on_yt on Discord</strong>
+          <span>Include the game name and a short description of what it does.</span>
+        </div>
+      </div>
+      <div class="submit-step">
+        <div class="submit-step-num">3</div>
+        <div class="submit-step-text">
+          <strong>Thumbnail (optional)</strong>
+          <span>Send a screenshot or image URL to make your script stand out in the hub.</span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1151,7 +1191,7 @@
         <div class="footer-pipe"></div>
         <span class="footer-note" id="footer-note">v1.0</span>
       </div>
-      <div class="footer-right">scripts.json powered · v1.0</div>
+      <div class="footer-right">by <a href="https://discord.com/users/untitled_on_yt" target="_blank" rel="noopener" style="color:var(--text-faint);text-decoration:none;transition:color var(--transition)" onmouseover="this.style.color='var(--text-muted)'" onmouseout="this.style.color='var(--text-faint)'">@untitled_on_yt</a> · v1.0</div>
     </div>
   </footer>
 
@@ -1310,8 +1350,6 @@
     toasts:       $('toast-container'),
     scrollTop:    $('scroll-top'),
     footerNote:   $('footer-note'),
-    schemaReveal: $('schema-reveal'),
-    schemaBtn:    $('show-schema-btn'),
   };
 
   /* ================================================================
@@ -1404,10 +1442,13 @@
       init();
     } catch(e) {
       D.loadingState.innerHTML = `
-        <span class="material-icons-round" style="font-size:36px;color:var(--text-faint)">error_outline</span>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-left:8px">
-          Couldn't load <strong style="color:var(--text-muted)">scripts.json</strong> — place it in the same folder.
-        </span>`;
+        <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px 0">
+          <span class="material-icons-round" style="font-size:48px;color:var(--text-faint);opacity:0.5">hourglass_top</span>
+          <div style="text-align:center">
+            <div style="font-family:var(--display);font-size:22px;font-weight:700;font-style:italic;color:var(--text-muted);margin-bottom:6px">Coming Soon</div>
+            <div style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);letter-spacing:0.08em">Scripts are being added — check back soon.</div>
+          </div>
+        </div>`;
     }
   }
 
@@ -1941,14 +1982,6 @@
     // Scroll to top
     window.addEventListener('scroll', () => D.scrollTop.classList.toggle('visible', scrollY > 400), { passive:true });
     D.scrollTop.addEventListener('click', () => window.scrollTo({ top:0, behavior:'smooth' }));
-
-    // Schema
-    D.schemaBtn.addEventListener('click', () => {
-      const o = D.schemaReveal.classList.toggle('open');
-      D.schemaBtn.innerHTML = o
-        ? '<span class="material-icons-round">expand_less</span> Hide'
-        : '<span class="material-icons-round">code</span> Schema';
-    });
 
     // Mobile nav
     document.querySelectorAll('.mob-nav-btn').forEach(btn => {
