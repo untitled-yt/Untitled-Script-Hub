@@ -1288,7 +1288,6 @@
      STATE
   ================================================================ */
   let allScripts     = [];
-  let localCopies    = {};   // id → extra copies added locally
   let activeFilter   = 'All';
   let currentView    = 'grid';
   let currentSort    = 'date-desc';
@@ -1296,7 +1295,7 @@
   let featuredVisible= true;
   let openScript     = null;
 
-  const STORE_KEY = 'ush_v1_copies';
+  const COPIES_KEY = 'ush:copies_v1'; // shared storage key — one object for all script copy counts
 
   /* ================================================================
      DOM REFS
@@ -1353,29 +1352,56 @@
   };
 
   /* ================================================================
-     PERSISTENCE
+     SHARED PERSISTENT COPIES STORAGE
+     Uses window.storage (shared: true) so ALL visitors see the same
+     live counts in real-time. Falls back to in-memory if unavailable.
   ================================================================ */
-  function loadLocal() {
-    try { localCopies = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch(e) {}
+  let sharedCopies = {};   // { [scriptId]: count } — loaded from shared storage
+
+  async function loadSharedCopies() {
+    try {
+      const result = await window.storage.get(COPIES_KEY, true);
+      sharedCopies = result ? JSON.parse(result.value) : {};
+    } catch(e) {
+      sharedCopies = {};
+    }
   }
 
-  function saveLocal() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(localCopies)); } catch(e) {}
+  async function saveSharedCopies() {
+    try {
+      await window.storage.set(COPIES_KEY, JSON.stringify(sharedCopies), true);
+    } catch(e) {
+      // silently fail — in-memory still works for this session
+    }
   }
 
   function getCopies(id) {
     const base = (allScripts.find(s => s.id === id) || {}).copies || 0;
-    return base + (localCopies[id] || 0);
+    return base + (sharedCopies[id] || 0);
   }
 
-  function addCopy(id) {
-    localCopies[id] = (localCopies[id] || 0) + 1;
-    saveLocal();
-    liveUpdate(id);
+  async function addCopy(id) {
+    sharedCopies[id] = (sharedCopies[id] || 0) + 1;
+    liveUpdate(id);           // update UI immediately (optimistic)
+    await saveSharedCopies(); // persist to shared storage
   }
 
   function totalCopies() {
     return allScripts.reduce((s, x) => s + getCopies(x.id), 0);
+  }
+
+  // Poll shared storage every 15s so counts stay fresh across visitors
+  function startLiveSync() {
+    setInterval(async () => {
+      const prev = JSON.stringify(sharedCopies);
+      await loadSharedCopies();
+      if (JSON.stringify(sharedCopies) !== prev) {
+        // Counts changed (another user copied something) — refresh all
+        allScripts.forEach(s => liveUpdate(s.id));
+        const tot = totalCopies();
+        D.statCopies.innerHTML = fmtN(tot) + ' <span class="live-badge">Live</span>';
+      }
+    }, 15000);
   }
 
   /* ================================================================
@@ -1403,19 +1429,6 @@
       D.mCopies.classList.add('tick');
       setTimeout(() => D.mCopies.classList.remove('tick'), 700);
     }
-  }
-
-  /* Ambient simulation — small ticks every few seconds */
-  function startSim() {
-    if (!allScripts.length) return;
-    setInterval(() => {
-      if (Math.random() < 0.3) {
-        const s = allScripts[Math.floor(Math.random() * allScripts.length)];
-        localCopies[s.id] = (localCopies[s.id] || 0) + 1;
-        saveLocal();
-        liveUpdate(s.id);
-      }
-    }, 3500);
   }
 
   /* ================================================================
@@ -1449,10 +1462,12 @@
      FETCH
   ================================================================ */
   async function loadScripts() {
+    // Load real shared copy counts first
+    await loadSharedCopies();
+
     // Use embedded scripts if the editor has injected them
     if (EMBEDDED_SCRIPTS && EMBEDDED_SCRIPTS.length > 0) {
       allScripts = EMBEDDED_SCRIPTS;
-      loadLocal();
       init();
       return;
     }
@@ -1460,7 +1475,6 @@
       const r = await fetch('./scripts.json');
       if (!r.ok) throw new Error(r.status);
       allScripts = await r.json();
-      loadLocal();
       init();
     } catch(e) {
       D.loadingState.innerHTML = `
@@ -1485,7 +1499,7 @@
     render();
     bindEvents();
     D.footerNote.textContent = `${allScripts.length} scripts · ${[...new Set(allScripts.map(s=>s.category))].length} games · v1.0`;
-    startSim();
+    startLiveSync();
   }
 
   /* ================================================================
