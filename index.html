@@ -868,6 +868,8 @@
     .copy-code-btn.copied { border-color: var(--green); color: var(--green); }
 
     pre { margin: 0; padding: 18px; overflow-x: auto; max-height: 340px; }
+    /* CE body pre must NOT be height-capped — overrides global pre rule */
+    .ce-body pre { max-height: none !important; padding: 10px 0; overflow-x: visible; }
     code { font-family: var(--mono); font-size: 12px; line-height: 1.75; color: #d4d4d4; }
 
     .tok-kw      { color: #c586c0; }
@@ -935,8 +937,8 @@
       to   { opacity: 1; transform: translateY(0); }
     }
     @keyframes ceLineIn {
-      from { opacity: 0; transform: translateX(-8px); }
-      to   { opacity: 1; transform: translateX(0); }
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
     @keyframes ceProgressSweep {
       from { width: 0; opacity: 1; }
@@ -1039,37 +1041,41 @@
     }
 
     .ce-body pre {
-      margin: 0; padding: 0;
-      min-height: 100%; max-height: none;
+      margin: 0; padding: 10px 0;
+      min-height: 100%;
       font-family: var(--mono); font-size: 13px;
-      line-height: 1.85; color: #d4d4d4;
-      tab-size: 2; overflow-x: auto;
-      display: table; width: 100%;
+      line-height: 1.8; color: #d4d4d4;
+      tab-size: 2;
+      display: block; width: max-content; min-width: 100%;
     }
 
     .ce-line {
-      display: table-row;
+      display: flex;
+      align-items: baseline;
       opacity: 0;
-      animation: ceLineIn 0.16s ease both;
+      animation: ceLineIn 0.14s ease both;
     }
-    .ce-line:hover { background: rgba(255,255,255,0.018); }
+    .ce-line:hover { background: rgba(255,255,255,0.022); }
 
     .ce-line-num {
-      display: table-cell;
-      padding: 0 16px 0 24px;
+      flex-shrink: 0;
+      padding: 0 18px 0 22px;
       color: var(--text-faint); font-size: 11px;
       user-select: none; text-align: right;
       border-right: 1px solid var(--border);
-      min-width: 52px; vertical-align: top;
-      opacity: 0.45; transition: opacity 0.15s ease;
-      white-space: nowrap;
+      width: var(--ce-ln-w, 58px);
+      min-width: var(--ce-ln-w, 58px);
+      opacity: 0.4; transition: opacity 0.15s ease;
+      white-space: nowrap; box-sizing: border-box;
+      line-height: inherit;
     }
     .ce-line:hover .ce-line-num { opacity: 1; color: var(--text-muted); }
 
     .ce-line-code {
-      display: table-cell;
-      padding: 0 28px 0 18px;
+      flex: 1;
+      padding: 0 40px 0 18px;
       white-space: pre;
+      line-height: inherit;
     }
 
     .ce-footer {
@@ -1092,8 +1098,8 @@
     @media (max-width: 768px) {
       .ce-header { padding: 10px 14px; }
       .ce-body pre { font-size: 11.5px; }
-      .ce-line-num { padding: 0 10px 0 12px; min-width: 36px; font-size: 10px; }
-      .ce-line-code { padding: 0 14px 0 10px; }
+      .ce-line-num { padding: 0 10px 0 14px; min-width: 36px; width: 36px; font-size: 10px; }
+      .ce-line-code { padding: 0 16px 0 10px; }
       .ce-lang { display: none; }
       .ce-footer { padding: 6px 14px; gap: 8px; }
     }
@@ -1418,7 +1424,7 @@
       .modal-actions::-webkit-scrollbar { display: none; }
       .modal-action-btn { font-size: 10px; padding: 9px 12px; flex-shrink: 0; }
       .modal-thumb { margin: 12px 18px 0; }
-      pre { max-height: 240px; font-size: 11px; }
+      .modal-code-wrap pre { max-height: 240px; font-size: 11px; }
 
       /* ── Code editor overlay ── */
       #ce-overlay { padding: 0; align-items: flex-end; }
@@ -2537,19 +2543,24 @@
     D.ceLineCount.textContent = lineCount.toLocaleString();
     D.ceCharCount.textContent = charCount.toLocaleString();
 
-    // Build table rows with line numbers + staggered animation
-    const maxDelay = 0.55; // cap stagger so long files don't wait forever
-    const stagger  = Math.min(0.022, maxDelay / lineCount);
+    // Set dynamic line-number column width based on digit count
+    const digits = String(lineCount).length;
+    const lnPx = Math.max(46, digits * 9 + 30);
+    D.ceCode.style.setProperty('--ce-ln-w', lnPx + 'px');
+
+    // Stagger capped so big files appear fast
+    const maxDelay = 0.45;
+    const stagger  = Math.min(0.016, maxDelay / Math.max(lineCount, 1));
     const rows = rawLines.map((line, i) => {
-      const delay = (0.18 + i * stagger).toFixed(3);
-      return `<span class="ce-line" style="animation-delay:${delay}s">` +
-             `<span class="ce-line-num">${i + 1}</span>` +
-             `<span class="ce-line-code">${luaHL(line) || '\u200b'}</span>` +
-             `</span>`;
+      const delay = (0.12 + i * stagger).toFixed(3);
+      return '<span class="ce-line" style="animation-delay:' + delay + 's">' +
+             '<span class="ce-line-num">' + (i + 1) + '</span>' +
+             '<span class="ce-line-code">' + (luaHL(line) || '\u200b') + '</span>' +
+             '</span>';
     }).join('');
     D.ceCode.innerHTML = rows;
 
-    // reset scroll to top
+    // Reset scroll to top
     const body = D.ceOverlay.querySelector('.ce-body');
     if (body) body.scrollTop = 0;
 
@@ -2575,12 +2586,14 @@
   ================================================================ */
   function luaHL(code) {
     let s = esc(code);
-    s = s.replace(/(--[^\n]*)/g, '<span class="tok-cmt">$1</span>');
+    // Apply non-comment tokens first
     s = s.replace(/\b(local|function|end|if|then|else|elseif|for|do|while|repeat|until|return|break|in|and|or|not|true|false|nil)\b/g, '<span class="tok-kw">$1</span>');
-    s = s.replace(/\b(game|workspace|script|Instance|task|wait|print|warn|error|pairs|ipairs|next|type|tostring|tonumber|math|table|string|os|tick|Vector3|CFrame|Color3|UDim2|UDim|Enum|loadstring|pcall|xpcall|rawget|rawset|setfenv|getfenv|getgenv|getrenv|syn|rconsole|Drawing|hookfunction|hookmetamethod|getrawmetatable|isreadonly)\b/g, '<span class="tok-builtin">$1</span>');
-    s = s.replace(/(&#x27;[^&#x27;]*&#x27;|&quot;[^&quot;]*&quot;)/g, '<span class="tok-str">$1</span>');
+    s = s.replace(/\b(game|workspace|script|Instance|task|wait|print|warn|error|pairs|ipairs|next|type|tostring|tonumber|math|table|string|os|tick|Vector2|Vector3|CFrame|Color3|UDim2|UDim|Enum|loadstring|pcall|xpcall|rawget|rawset|setfenv|getfenv|getgenv|getrenv|syn|rconsole|Drawing|hookfunction|hookmetamethod|getrawmetatable|isreadonly|GetService|FindFirstChild|FindFirstChildOfClass|WaitForChild)\b/g, '<span class="tok-builtin">$1</span>');
+    s = s.replace(/(&#x27;[^<]*?&#x27;|&quot;[^<]*?&quot;)/g, '<span class="tok-str">$1</span>');
     s = s.replace(/\b(\d+\.?\d*)\b/g, '<span class="tok-num">$1</span>');
     s = s.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)(\s*\()/g, '<span class="tok-fn">$1</span>$2');
+    // Comments LAST — they override everything above inside the comment span
+    s = s.replace(/(--(?:(?!<\/span>).)*)/g, '<span class="tok-cmt">$1</span>');
     return s;
   }
 
