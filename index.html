@@ -1226,14 +1226,6 @@
           <span class="modal-meta-value" id="modal-cat">—</span>
         </div>
         <div class="modal-meta-item">
-          <span class="modal-meta-label">Copies</span>
-          <span class="modal-meta-value modal-dl-count" id="modal-copies">—</span>
-        </div>
-        <div class="modal-meta-item">
-          <span class="modal-meta-label">Stars</span>
-          <span class="modal-meta-value" id="modal-stars">—</span>
-        </div>
-        <div class="modal-meta-item">
           <span class="modal-meta-label">Added</span>
           <span class="modal-meta-value" id="modal-date">—</span>
         </div>
@@ -1259,6 +1251,11 @@
         <button class="modal-action-btn" id="modal-share-btn">
           <span class="material-icons-round">share</span>Share
         </button>
+      </div>
+      <div id="share-link-row" style="display:none;align-items:center;gap:8px;padding:0 28px 20px;">
+        <span class="material-icons-round" style="font-size:14px;color:var(--text-faint);flex-shrink:0">link</span>
+        <input id="share-link-input" type="text" readonly style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-muted);font-family:var(--mono);font-size:10.5px;padding:7px 10px;outline:none;" />
+        <button id="share-link-copy" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-faint);width:32px;height:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all var(--transition);"><span class="material-icons-round" style="font-size:14px">content_copy</span></button>
       </div>
     </div>
   </div>
@@ -1294,8 +1291,6 @@
   let searchQuery    = '';
   let featuredVisible= true;
   let openScript     = null;
-
-  const COPIES_KEY = 'ush:copies_v1'; // shared storage key — one object for all script copy counts
 
   /* ================================================================
      DOM REFS
@@ -1333,16 +1328,12 @@
     mVerBadge:    $('modal-version-badge'),
     mAuthor:      $('modal-author'),
     mCat:         $('modal-cat'),
-    mCopies:      $('modal-copies'),
-    mStars:       $('modal-stars'),
     mDate:        $('modal-date'),
     mCode:        $('modal-code-content'),
     mCodeFile:    $('modal-code-filename'),
     mTagsCont:    $('modal-tags-container'),
     mThumb:       $('modal-thumb'),
     mThumbImg:    $('modal-thumb-img'),
-    copyCodeBtn:  $('copy-code-btn'),
-    mExecuteBtn:  $('modal-execute-btn'),
     mCopyBtn:     $('modal-copy-btn'),
     mDlBtn:       $('modal-download-btn'),
     mShareBtn:    $('modal-share-btn'),
@@ -1352,87 +1343,7 @@
   };
 
   /* ================================================================
-     SHARED PERSISTENT COPIES STORAGE
-     Uses window.storage (shared: true) so ALL visitors see the same
-     live counts in real-time. Falls back to in-memory if unavailable.
-  ================================================================ */
-  let sharedCopies = {};   // { [scriptId]: count } — loaded from shared storage
-
-  async function loadSharedCopies() {
-    try {
-      const result = await window.storage.get(COPIES_KEY, true);
-      sharedCopies = result ? JSON.parse(result.value) : {};
-    } catch(e) {
-      sharedCopies = {};
-    }
-  }
-
-  async function saveSharedCopies() {
-    try {
-      await window.storage.set(COPIES_KEY, JSON.stringify(sharedCopies), true);
-    } catch(e) {
-      // silently fail — in-memory still works for this session
-    }
-  }
-
-  function getCopies(id) {
-    const base = (allScripts.find(s => s.id === id) || {}).copies || 0;
-    return base + (sharedCopies[id] || 0);
-  }
-
-  async function addCopy(id) {
-    sharedCopies[id] = (sharedCopies[id] || 0) + 1;
-    liveUpdate(id);           // update UI immediately (optimistic)
-    await saveSharedCopies(); // persist to shared storage
-  }
-
-  function totalCopies() {
-    return allScripts.reduce((s, x) => s + getCopies(x.id), 0);
-  }
-
-  // Poll shared storage every 15s so counts stay fresh across visitors
-  function startLiveSync() {
-    setInterval(async () => {
-      const prev = JSON.stringify(sharedCopies);
-      await loadSharedCopies();
-      if (JSON.stringify(sharedCopies) !== prev) {
-        // Counts changed (another user copied something) — refresh all
-        allScripts.forEach(s => liveUpdate(s.id));
-        const tot = totalCopies();
-        D.statCopies.innerHTML = fmtN(tot) + ' <span class="live-badge">Live</span>';
-      }
-    }, 15000);
-  }
-
-  /* ================================================================
-     LIVE UPDATE
-  ================================================================ */
-  function liveUpdate(changedId) {
-    // Hero counter
-    const tot = totalCopies();
-    D.statCopies.innerHTML = fmtN(tot) + ' <span class="live-badge">Live</span>';
-
-    // Cards in grid
-    document.querySelectorAll(`.dl-count[data-id="${changedId}"]`).forEach(el => {
-      el.textContent = fmtN(getCopies(changedId));
-      el.classList.remove('tick');
-      void el.offsetWidth;
-      el.classList.add('tick');
-      setTimeout(() => el.classList.remove('tick'), 700);
-    });
-
-    // Modal
-    if (openScript && openScript.id === changedId) {
-      D.mCopies.textContent = fmtN(getCopies(changedId));
-      D.mCopies.classList.remove('tick');
-      void D.mCopies.offsetWidth;
-      D.mCopies.classList.add('tick');
-      setTimeout(() => D.mCopies.classList.remove('tick'), 700);
-    }
-  }
-
-  /* ================================================================
-     EMBEDDED SCRIPTS (populated by UntitledScriptHub editor on export)
+     EMBEDDED SCRIPTS (populated by editor on export)
   ================================================================ */
   const EMBEDDED_SCRIPTS = [
   {
@@ -1441,11 +1352,7 @@
     "description": "An Universal Admin Script",
     "category": "Universal",
     "type": "Keyless",
-    "tags": [
-      "gui",
-      "keyless",
-      "universal"
-    ],
+    "tags": ["gui","keyless","universal"],
     "author": "EdgeIY",
     "version": "1.0.0",
     "date": "2026-02-22",
@@ -1462,10 +1369,6 @@
      FETCH
   ================================================================ */
   async function loadScripts() {
-    // Load real shared copy counts first
-    await loadSharedCopies();
-
-    // Use embedded scripts if the editor has injected them
     if (EMBEDDED_SCRIPTS && EMBEDDED_SCRIPTS.length > 0) {
       allScripts = EMBEDDED_SCRIPTS;
       init();
@@ -1499,7 +1402,15 @@
     render();
     bindEvents();
     D.footerNote.textContent = `${allScripts.length} scripts · ${[...new Set(allScripts.map(s=>s.category))].length} games · v1.0`;
-    startLiveSync();
+    // Deep-link: ?script=slug or #id
+    const slug = new URLSearchParams(location.search).get('script');
+    if (slug) {
+      const m = allScripts.find(s => toSlug(s.title) === slug);
+      if (m) setTimeout(() => openModal(m.id), 300);
+    } else if (location.hash) {
+      const id = parseInt(location.hash.replace('#',''));
+      if (!isNaN(id)) setTimeout(() => openModal(id), 300);
+    }
   }
 
   /* ================================================================
@@ -1508,32 +1419,21 @@
   function buildStats() {
     const cats     = [...new Set(allScripts.map(s => s.category))].length;
     const featured = allScripts.filter(s => s.featured).length;
-    const tot      = totalCopies();
-
     countUp(D.statTotal,    allScripts.length);
     countUp(D.statCats,     cats);
     countUp(D.statFeatured, featured);
-    // copies with live badge
-    D.statCopies.innerHTML = '0 <span class="live-badge">Live</span>';
-    countUp({ set: v => { D.statCopies.innerHTML = fmtN(v) + ' <span class="live-badge">Live</span>'; } }, tot);
+    D.statCopies.innerHTML = allScripts.length + ' <span class="live-badge">Live</span>';
   }
 
   function countUp(el, target) {
-    const dur   = 900;
-    const start = performance.now();
-    function tick(now) {
+    const dur = 900, start = performance.now();
+    (function tick(now) {
       const p = Math.min((now - start) / dur, 1);
-      const e = 1 - Math.pow(1 - p, 3);
-      const v = Math.round(e * target);
-      if (el.set) el.set(v);
-      else el.textContent = fmtN(v);
+      const v = Math.round((1 - Math.pow(1-p, 3)) * target);
+      el.textContent = fmtN(v);
       if (p < 1) requestAnimationFrame(tick);
-      else {
-        if (el.set) el.set(target);
-        else el.textContent = fmtN(target);
-      }
-    }
-    requestAnimationFrame(tick);
+      else el.textContent = fmtN(target);
+    })(performance.now());
   }
 
   /* ================================================================
@@ -1543,45 +1443,29 @@
     const featured = allScripts.filter(s => s.featured);
     if (!featured.length) {
       D.featuredSect.style.display = 'none';
-      D.featToggle.style.display   = 'none';
+      if (D.featToggle) D.featToggle.style.display = 'none';
       return;
     }
-
     D.featuredGrid.innerHTML = featured.map(s => `
       <div class="card-featured" data-id="${s.id}" role="button" tabindex="0" aria-label="Open ${esc(s.title)}">
         <div class="featured-thumb">
           ${s.thumbnail
             ? `<img src="${esc(s.thumbnail)}" alt="${esc(s.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'thumb-placeholder\\'><span class=\\'material-icons-round\\'>gamepad</span></div>'">`
-            : `<div class="thumb-placeholder"><span class="material-icons-round">gamepad</span></div>`
-          }
+            : `<div class="thumb-placeholder"><span class="material-icons-round">gamepad</span></div>`}
         </div>
         <div class="featured-body">
           <div class="card-lang-row">
-            <span class="lang-dot lua"></span>
-            <span class="lang-label">Lua</span>
+            <span class="lang-dot lua"></span><span class="lang-label">Lua</span>
             <span class="type-tag ${typeClass(s.type)}">${esc(s.type||'Free')}</span>
           </div>
           <div class="f-card-title">${esc(s.title)}</div>
           <div class="f-card-desc">${esc(s.description)}</div>
           <div class="f-card-footer">
-            <div class="f-meta">
-              <span class="material-icons-round">copy_all</span>
-              <span class="dl-count" data-id="${s.id}">${fmtN(getCopies(s.id))}</span>
-            </div>
-            <div class="f-meta">
-              <span class="material-icons-round">star_outline</span>
-              ${fmtN(s.stars||0)}
-            </div>
-            <div class="f-meta">
-              <span class="material-icons-round">gamepad</span>
-              ${esc(s.category||'—')}
-            </div>
+            <div class="f-meta"><span class="material-icons-round">gamepad</span>${esc(s.category||'—')}</div>
             <div class="f-arrow"><span class="material-icons-round">north_east</span></div>
           </div>
         </div>
-      </div>
-    `).join('');
-
+      </div>`).join('');
     D.featuredGrid.querySelectorAll('.card-featured').forEach(el => {
       el.addEventListener('click', () => openModal(+el.dataset.id));
       el.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' ') openModal(+el.dataset.id); });
@@ -1599,7 +1483,6 @@
     'Brookhaven':'home','A Universal Time':'timer',
     'Fruit Battlegrounds':'sports_mma',
   };
-
   function getIcon(cat) { return CAT_ICONS[cat] || 'gamepad'; }
 
   function buildChips() {
@@ -1610,7 +1493,6 @@
         <span class="material-icons-round">${getIcon(cat)}</span>${esc(cat)}<span class="count">${n}</span>
       </button>`;
     }).join('');
-
     D.filterChips.querySelectorAll('.filter-chip').forEach(btn => {
       btn.addEventListener('click', () => {
         activeFilter = btn.dataset.cat;
@@ -1644,11 +1526,10 @@
   function sorted(list) {
     const a = [...list];
     switch(currentSort) {
-      case 'date-desc':   a.sort((x,y) => new Date(y.date)-new Date(x.date)); break;
-      case 'date-asc':    a.sort((x,y) => new Date(x.date)-new Date(y.date)); break;
-      case 'copies-desc': a.sort((x,y) => getCopies(y.id)-getCopies(x.id)); break;
-      case 'stars-desc':  a.sort((x,y) => (y.stars||0)-(x.stars||0)); break;
-      case 'title-asc':   a.sort((x,y) => x.title.localeCompare(y.title)); break;
+      case 'date-desc':  a.sort((x,y) => new Date(y.date)-new Date(x.date)); break;
+      case 'date-asc':   a.sort((x,y) => new Date(x.date)-new Date(y.date)); break;
+      case 'stars-desc': a.sort((x,y) => (y.stars||0)-(x.stars||0)); break;
+      case 'title-asc':  a.sort((x,y) => x.title.localeCompare(y.title)); break;
     }
     return a;
   }
@@ -1659,19 +1540,15 @@
   function render() {
     const list = getFiltered();
     D.resultsCount.textContent = `${list.length} script${list.length!==1?'s':''}`;
-
     if (!list.length) {
       D.scriptsGrid.innerHTML = '';
       D.emptyState.classList.add('visible');
       return;
     }
-
     D.emptyState.classList.remove('visible');
-
     D.scriptsGrid.innerHTML = currentView === 'grid'
       ? list.map((s,i) => gridCard(s,i)).join('')
       : list.map((s,i) => listCard(s,i)).join('');
-
     D.scriptsGrid.querySelectorAll('.script-card').forEach(el => {
       el.addEventListener('click', () => openModal(+el.dataset.id));
       el.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' ') openModal(+el.dataset.id); });
@@ -1683,21 +1560,19 @@
   ================================================================ */
   function typeClass(type) {
     const t = (type||'').toLowerCase();
-    if (t === 'free')    return 'type-free';
-    if (t === 'keyless') return 'type-keyless';
-    if (t === 'key')     return 'type-key';
+    if (t==='free')    return 'type-free';
+    if (t==='keyless') return 'type-keyless';
+    if (t==='key')     return 'type-key';
     return 'type-default';
   }
 
   function gridCard(s, i) {
-    const delay = Math.min(i * 0.05, 0.45);
     return `
-      <div class="script-card" data-id="${s.id}" role="button" tabindex="0" aria-label="View ${esc(s.title)}" style="animation-delay:${delay}s">
+      <div class="script-card" data-id="${s.id}" role="button" tabindex="0" aria-label="View ${esc(s.title)}" style="animation-delay:${Math.min(i*0.05,0.45)}s">
         <div class="card-thumb">
           ${s.thumbnail
             ? `<img src="${esc(s.thumbnail)}" alt="${esc(s.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'thumb-placeholder\\'><span class=\\'material-icons-round\\'>gamepad</span></div>'">`
-            : `<div class="thumb-placeholder"><span class="material-icons-round">gamepad</span></div>`
-          }
+            : `<div class="thumb-placeholder"><span class="material-icons-round">gamepad</span></div>`}
         </div>
         <div class="card-body">
           <div class="card-top-row">
@@ -1707,22 +1582,9 @@
           </div>
           <div class="card-title-main">${esc(s.title)}</div>
           <div class="card-description">${esc(s.description)}</div>
-          <div class="card-tags">
-            ${(s.tags||[]).slice(0,3).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}
-          </div>
+          <div class="card-tags">${(s.tags||[]).slice(0,3).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}</div>
           <div class="card-stats-row">
-            <div class="stat-chip">
-              <span class="material-icons-round">copy_all</span>
-              <span class="dl-count" data-id="${s.id}">${fmtN(getCopies(s.id))}</span>
-            </div>
-            <div class="stat-chip">
-              <span class="material-icons-round">star_outline</span>
-              ${fmtN(s.stars||0)}
-            </div>
-            <div class="stat-chip">
-              <span class="material-icons-round">calendar_today</span>
-              ${fmtDate(s.date)}
-            </div>
+            <div class="stat-chip"><span class="material-icons-round">calendar_today</span>${fmtDate(s.date)}</div>
             <button class="open-btn" tabindex="-1"><span class="material-icons-round">open_in_full</span></button>
           </div>
         </div>
@@ -1730,9 +1592,8 @@
   }
 
   function listCard(s, i) {
-    const delay = Math.min(i * 0.04, 0.4);
     return `
-      <div class="script-card" data-id="${s.id}" role="button" tabindex="0" aria-label="View ${esc(s.title)}" style="animation-delay:${delay}s">
+      <div class="script-card" data-id="${s.id}" role="button" tabindex="0" aria-label="View ${esc(s.title)}" style="animation-delay:${Math.min(i*0.04,0.4)}s">
         <div class="card-body">
           <div class="card-body-inner">
             <div>
@@ -1747,14 +1608,7 @@
               <div class="card-description">${esc(s.description)}</div>
             </div>
             <div class="card-stats-row">
-              <div class="stat-chip">
-                <span class="material-icons-round">copy_all</span>
-                <span class="dl-count" data-id="${s.id}">${fmtN(getCopies(s.id))}</span>
-              </div>
-              <div class="stat-chip">
-                <span class="material-icons-round">star_outline</span>
-                ${fmtN(s.stars||0)}
-              </div>
+              <div class="stat-chip"><span class="material-icons-round">calendar_today</span>${fmtDate(s.date)}</div>
               <button class="open-btn" tabindex="-1"><span class="material-icons-round">open_in_full</span></button>
             </div>
           </div>
@@ -1765,38 +1619,39 @@
   /* ================================================================
      MODAL
   ================================================================ */
+  function toSlug(title) {
+    return (title||'').toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+  }
+
   function openModal(id) {
     const s = allScripts.find(x => x.id === id);
     if (!s) return;
     openScript = s;
 
-    D.mTitle.textContent    = s.title;
-    D.mDesc.textContent     = s.description;
-    D.mTypeBadge.textContent= s.type || 'Free';
-    D.mCatBadge.textContent = s.category || '—';
-    D.mVerBadge.textContent = `v${s.version||'1.0.0'}`;
-    D.mAuthor.textContent   = s.author || '—';
-    D.mCat.textContent      = s.category || '—';
-    D.mCopies.textContent   = fmtN(getCopies(s.id));
-    D.mStars.textContent    = fmtN(s.stars||0);
-    D.mDate.textContent     = fmtDate(s.date);
-    D.mCodeFile.textContent = s.title.toLowerCase().replace(/\s+/g,'_') + '.lua';
-    D.mCode.innerHTML       = luaHL(s.code || '-- no code available');
+    D.mTitle.textContent     = s.title;
+    D.mDesc.textContent      = s.description;
+    D.mTypeBadge.textContent = s.type || 'Free';
+    D.mCatBadge.textContent  = s.category || '—';
+    D.mVerBadge.textContent  = `v${s.version||'1.0.0'}`;
+    D.mAuthor.textContent    = s.author || '—';
+    D.mCat.textContent       = s.category || '—';
+    D.mDate.textContent      = fmtDate(s.date);
+    D.mCodeFile.textContent  = toSlug(s.title) + '.lua';
+    D.mCode.innerHTML        = luaHL(s.code || '-- no code available');
 
-    D.mThumb.style.display  = s.thumbnail ? 'block' : 'none';
+    D.mThumb.style.display = s.thumbnail ? 'block' : 'none';
     if (s.thumbnail) D.mThumbImg.src = s.thumbnail;
 
     D.mTagsCont.innerHTML = (s.tags||[]).map(t =>
       `<span class="modal-tag" data-tag="${esc(t)}">#${esc(t)}</span>`
     ).join('');
-
     D.mTagsCont.querySelectorAll('.modal-tag').forEach(el => {
-      el.addEventListener('click', () => {
-        closeModal();
-        setQ(el.dataset.tag);
-        setFilter('All');
-      });
+      el.addEventListener('click', () => { closeModal(); setQ(el.dataset.tag); setFilter('All'); });
     });
+
+    // Hide share row when opening fresh
+    const shareRow = $('share-link-row');
+    if (shareRow) shareRow.style.display = 'none';
 
     D.overlay.classList.add('visible');
     document.body.style.overflow = 'hidden';
@@ -1806,6 +1661,8 @@
     D.overlay.classList.remove('visible');
     document.body.style.overflow = '';
     openScript = null;
+    const shareRow = $('share-link-row');
+    if (shareRow) shareRow.style.display = 'none';
   }
 
   /* ================================================================
@@ -1823,37 +1680,36 @@
   }
 
   /* ================================================================
-     COPY / DOWNLOAD
+     CLIP / DOWNLOAD
   ================================================================ */
   function clip(text) {
     if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
-    const t = Object.assign(document.createElement('textarea'), { value: text, style:'position:fixed;opacity:0' });
+    const t = Object.assign(document.createElement('textarea'), {value:text, style:'position:fixed;opacity:0'});
     document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t);
     return Promise.resolve();
   }
 
   function dl(s) {
-    const n = s.title.toLowerCase().replace(/\s+/g,'_') + '.lua';
-    const b = new Blob([s.code||''], { type:'text/plain' });
-    const u = URL.createObjectURL(b);
-    const a = Object.assign(document.createElement('a'), { href:u, download:n });
+    const blob = new Blob([s.code||''], {type:'text/plain'});
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), {href:url, download: toSlug(s.title)+'.lua'});
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(u);
+    URL.revokeObjectURL(url);
   }
 
   /* ================================================================
      TOAST
   ================================================================ */
   function toast(msg, type='info', dur=2800) {
-    const icons = { success:'check_circle', error:'error_outline', info:'info' };
+    const icons = {success:'check_circle', error:'error_outline', info:'info'};
     const el = Object.assign(document.createElement('div'), {
-      className:`toast ${type}`,
-      innerHTML:`<span class="material-icons-round">${icons[type]||'info'}</span><span>${msg}</span>`
+      className: `toast ${type}`,
+      innerHTML: `<span class="material-icons-round">${icons[type]||'info'}</span><span>${msg}</span>`
     });
     D.toasts.appendChild(el);
     setTimeout(() => {
       el.classList.add('out');
-      el.addEventListener('animationend', () => el.remove(), { once:true });
+      el.addEventListener('animationend', () => el.remove(), {once:true});
     }, dur);
   }
 
@@ -1900,7 +1756,7 @@
   ================================================================ */
   function bindEvents() {
 
-    // Desktop search
+    // Search — desktop
     D.searchInput.addEventListener('input', () => {
       searchQuery = D.searchInput.value;
       D.mobSearch.value = searchQuery;
@@ -1910,7 +1766,7 @@
     });
     D.searchClear.addEventListener('click', () => { setQ(''); D.searchInput.focus(); });
 
-    // Mobile search
+    // Search — mobile
     D.mobSearch.addEventListener('input', () => {
       searchQuery = D.mobSearch.value;
       D.searchInput.value = searchQuery;
@@ -1923,7 +1779,7 @@
     // Sort
     D.sortSelect.addEventListener('change', () => { currentSort = D.sortSelect.value; render(); });
 
-    // Grid/List
+    // Grid / List toggle
     D.gridBtn.addEventListener('click', () => {
       currentView = 'grid'; D.mainGrid.className = 'view-grid';
       D.gridBtn.classList.add('active'); D.listBtn.classList.remove('active'); render();
@@ -1933,79 +1789,74 @@
       D.listBtn.classList.add('active'); D.gridBtn.classList.remove('active'); render();
     });
 
-    // Featured toggle
-    D.featToggle.addEventListener('click', () => {
-      featuredVisible = !featuredVisible;
-      D.featuredSect.style.display = featuredVisible ? '' : 'none';
-      D.featToggle.classList.toggle('active', featuredVisible);
-    });
-    D.featToggle.classList.add('active');
+    // Featured toggle — null-safe (hidden when no featured scripts exist)
+    if (D.featToggle) {
+      D.featToggle.classList.add('active');
+      D.featToggle.addEventListener('click', () => {
+        featuredVisible = !featuredVisible;
+        D.featuredSect.style.display = featuredVisible ? '' : 'none';
+        D.featToggle.classList.toggle('active', featuredVisible);
+      });
+    }
 
-    // Modal
+    // Modal open / close
     D.mClose.addEventListener('click', closeModal);
-    D.overlay.addEventListener('click', e => { if(e.target===D.overlay) closeModal(); });
+    D.overlay.addEventListener('click', e => { if (e.target === D.overlay) closeModal(); });
 
-    // Mobile drag-to-close
+    // Mobile swipe down to close
     let ty = 0;
-    D.modal.addEventListener('touchstart', e => { ty = e.touches[0].clientY; }, { passive:true });
-    D.modal.addEventListener('touchend', e => { if(e.changedTouches[0].clientY - ty > 90) closeModal(); }, { passive:true });
+    D.modal.addEventListener('touchstart', e => { ty = e.touches[0].clientY; }, {passive:true});
+    D.modal.addEventListener('touchend',   e => { if (e.changedTouches[0].clientY - ty > 90) closeModal(); }, {passive:true});
 
-    // Copy code (header)
-    D.copyCodeBtn.addEventListener('click', () => {
-      if (!openScript) return;
-      clip(openScript.code||'').then(() => {
-        addCopy(openScript.id);
-        D.copyCodeBtn.classList.add('copied');
-        D.copyCodeBtn.innerHTML = '<span class="material-icons-round">check</span> Copied';
-        setTimeout(() => {
-          D.copyCodeBtn.classList.remove('copied');
-          D.copyCodeBtn.innerHTML = '<span class="material-icons-round">content_copy</span> Copy';
-        }, 2200);
-        toast('Script copied!', 'success');
-      });
-    });
-
-    // Execute btn
-    D.mExecuteBtn.addEventListener('click', () => {
-      if (!openScript) return;
-      clip(openScript.code||'').then(() => {
-        addCopy(openScript.id);
-        toast('Copied — paste into your executor!', 'success');
-        D.mExecuteBtn.innerHTML = '<span class="material-icons-round">check</span> Copied!';
-        setTimeout(() => {
-          D.mExecuteBtn.innerHTML = '<span class="material-icons-round">play_arrow</span>Copy &amp; Execute';
-        }, 2200);
-      });
-    });
-
-    // Raw copy
+    // Copy button — copies script to clipboard
     D.mCopyBtn.addEventListener('click', () => {
       if (!openScript) return;
       clip(openScript.code||'').then(() => {
-        addCopy(openScript.id);
-        toast('Copied to clipboard', 'success');
+        toast('Copied to clipboard!', 'success');
+        const orig = D.mCopyBtn.innerHTML;
+        D.mCopyBtn.innerHTML = '<span class="material-icons-round">check</span>Copied!';
+        setTimeout(() => { D.mCopyBtn.innerHTML = orig; }, 2000);
       });
     });
 
-    // Download
+    // Download button — saves as .lua file
     D.mDlBtn.addEventListener('click', () => {
       if (!openScript) return;
       dl(openScript);
-      toast(`Downloaded ${openScript.title}.lua`, 'success');
+      toast(`Downloading ${openScript.title}.lua`, 'success');
     });
 
-    // Share
+    // Share button — shows/hides a link row with a pretty ?script=slug URL
     D.mShareBtn.addEventListener('click', () => {
       if (!openScript) return;
-      const url = location.href.split('#')[0] + '#' + openScript.id;
+      const shareRow = $('share-link-row');
+      const inp      = $('share-link-input');
+      if (!shareRow || !inp) return;
+      const isOpen = shareRow.style.display === 'flex';
+      if (isOpen) { shareRow.style.display = 'none'; return; }
+      inp.value = location.origin + location.pathname + '?script=' + toSlug(openScript.title);
+      shareRow.style.display = 'flex';
+      inp.select();
       if (navigator.share) {
-        navigator.share({ title: openScript.title, text: openScript.description, url }).catch(()=>{});
-      } else {
-        clip(url).then(() => toast('Link copied!', 'info'));
+        navigator.share({title: openScript.title, text: openScript.description, url: inp.value}).catch(()=>{});
       }
     });
 
-    // Keyboard
+    // Copy the share link
+    const shareCopyBtn = $('share-link-copy');
+    if (shareCopyBtn) {
+      shareCopyBtn.addEventListener('click', () => {
+        const inp = $('share-link-input');
+        if (!inp || !inp.value) return;
+        clip(inp.value).then(() => {
+          toast('Link copied!', 'success');
+          const icon = shareCopyBtn.querySelector('.material-icons-round');
+          if (icon) { icon.textContent = 'check'; setTimeout(() => { icon.textContent = 'content_copy'; }, 2000); }
+        });
+      });
+    }
+
+    // Keyboard shortcuts
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && D.overlay.classList.contains('visible')) closeModal();
       if ((e.ctrlKey||e.metaKey) && e.key === 'k') {
@@ -2015,41 +1866,35 @@
       }
     });
 
-    // Scroll to top
-    window.addEventListener('scroll', () => D.scrollTop.classList.toggle('visible', scrollY > 400), { passive:true });
-    D.scrollTop.addEventListener('click', () => window.scrollTo({ top:0, behavior:'smooth' }));
+    // Scroll-to-top button
+    window.addEventListener('scroll', () => D.scrollTop.classList.toggle('visible', scrollY > 400), {passive:true});
+    D.scrollTop.addEventListener('click', () => window.scrollTo({top:0, behavior:'smooth'}));
 
-    // Mobile nav
+    // Mobile bottom nav
     document.querySelectorAll('.mob-nav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.mob-nav-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const panel = btn.dataset.panel;
-
         if (panel === 'home') {
-          window.scrollTo({ top:0, behavior:'smooth' });
+          window.scrollTo({top:0, behavior:'smooth'});
         } else if (panel === 'filter') {
-          document.getElementById('toolbar').scrollIntoView({ behavior:'smooth' });
+          const tb = $('toolbar');
+          if (tb) tb.scrollIntoView({behavior:'smooth'});
         } else if (panel === 'top') {
-          currentSort = 'copies-desc';
-          D.sortSelect.value = 'copies-desc';
+          currentSort = 'date-desc';
+          D.sortSelect.value = 'date-desc';
           render();
-          toast('Sorted by most copied', 'info');
+          toast('Showing newest first', 'info');
         } else if (panel === 'grid') {
           currentView = currentView === 'grid' ? 'list' : 'grid';
           D.mainGrid.className = 'view-' + currentView;
           const icon = $('mob-view-icon');
-          icon.textContent = currentView === 'grid' ? 'grid_view' : 'view_list';
+          if (icon) icon.textContent = currentView === 'grid' ? 'grid_view' : 'view_list';
           render();
         }
       });
     });
-
-    // Hash open on load
-    if (location.hash) {
-      const id = parseInt(location.hash.replace('#',''));
-      if (!isNaN(id)) setTimeout(() => openModal(id), 400);
-    }
   }
 
   /* ================================================================
